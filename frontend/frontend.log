@@ -1,0 +1,10 @@
+
+> travel-frontend@0.0.1 dev
+> vite --port 5173
+
+
+  VITE v5.4.21  ready in 84 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+  ➜  press h + enter to show help
