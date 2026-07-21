@@ -2,6 +2,7 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from typing import Optional
 import jwt
+from app.core.config import settings
 
 # PBKDF2 is provided by Passlib itself, avoiding incompatibilities between
 # older Passlib releases and newer bcrypt packages. Keep bcrypt enabled so
@@ -11,9 +12,9 @@ pwd_context = CryptContext(
     deprecated="auto",
 )
 
-SECRET_KEY = "dev-secret-key-change-me"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 day
+SECRET_KEY = settings.SECRET_KEY or "dev-secret-key-change-me"
+ALGORITHM = settings.ALGORITHM
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 
 def get_password_hash(password: str) -> str:
