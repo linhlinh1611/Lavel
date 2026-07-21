@@ -10,11 +10,12 @@ from sqlalchemy import inspect, text
 # Import kết nối database và Base model
 from app.database import Base, engine
 # Import các models để SQLAlchemy biết đường tạo bảng trong Postgres
-from app.models.user import User
-from app.models.tour import Tour
-from app.models.booking import Booking# Import router tổng của API v1
-from app.models.site_setting import SiteSetting
-from app.models.cart_item import CartItem
+from app.models.user import User  # noqa: F401 - đăng ký model với SQLAlchemy metadata
+from app.models.tour import Tour  # noqa: F401 - đăng ký model với SQLAlchemy metadata
+from app.models.booking import Booking  # noqa: F401 - đăng ký model với SQLAlchemy metadata
+from app.models.site_setting import SiteSetting  # noqa: F401 - đăng ký model với SQLAlchemy metadata
+from app.models.cart_item import CartItem  # noqa: F401 - đăng ký model với SQLAlchemy metadata
+# Import router tổng của API v1
 from app.api.v1.api import api_router
 
 # 1. Tự động quét các Model và tạo bảng trong PostgreSQL (nếu bảng chưa tồn tại)

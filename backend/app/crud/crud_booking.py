@@ -1,6 +1,4 @@
 from sqlalchemy.orm import Session
-from uuid import UUID
-
 from app.models.booking import Booking
 from app.schemas.booking import BookingCreate
 

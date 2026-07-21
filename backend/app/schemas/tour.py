@@ -1,7 +1,7 @@
 from datetime import date
 from pydantic import BaseModel, model_validator
 from uuid import UUID
-from typing import Optional, List
+from typing import Optional
 
 # Các trường chung của Tour
 class TourBase(BaseModel):
