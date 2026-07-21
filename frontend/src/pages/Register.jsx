@@ -19,7 +19,7 @@ export default function Register() {
     }
     setSubmitting(true);
     try {
-      const { confirmPassword, ...payload } = form;
+      const { confirmPassword: _confirmPassword, ...payload } = form;
       await register(payload);
       navigate('/login', { replace: true });
     } catch (err) {

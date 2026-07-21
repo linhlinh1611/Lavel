@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { createTour, deleteTour, fetchAdminTours, fetchHeroSetting, resolveMediaUrl, updateHeroSetting, updateTour, uploadTourMedia } from '../api';
 import { destinationGroups, popularDestinations } from '../data/destinations';
@@ -25,8 +25,8 @@ export default function AdminDashboard({ session, onLogout }) {
   const destinationCount = new Set(tours.map((tour) => tour.location).filter(Boolean)).size;
   const averagePrice = tours.length ? tours.reduce((sum, tour) => sum + tour.price, 0) / tours.length : 0;
 
-  const loadTours = () => fetchAdminTours(session.access_token).then(setTours).catch((err) => setError(err.message));
-  useEffect(() => { loadTours(); }, []);
+  const loadTours = useCallback(() => fetchAdminTours(session.access_token).then(setTours).catch((err) => setError(err.message)), [session.access_token]);
+  useEffect(() => { loadTours(); }, [loadTours]);
   useEffect(() => { fetchHeroSetting().then((data) => setHeroImage(data.hero_image_url)).catch((err) => setError(err.message)); }, []);
 
   const change = (event) => {
