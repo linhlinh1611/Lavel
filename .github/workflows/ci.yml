@@ -159,16 +159,22 @@ jobs:
     steps:
       - name: Configure SSH
         env:
+          BACKEND_ENV_FILE: ${{ secrets.BACKEND_ENV_FILE }}
           BACKEND_SSH_KEY: ${{ secrets.BACKEND_SSH_KEY }}
         run: |
           test -n "$BACKEND_HOST"
           test -n "$BACKEND_USER"
+          test -n "$BACKEND_ENV_FILE"
           test -n "$BACKEND_SSH_KEY"
           install -m 700 -d ~/.ssh
           printf '%s\n' "$BACKEND_SSH_KEY" > ~/.ssh/lavel_deploy_key
           chmod 600 ~/.ssh/lavel_deploy_key
           ssh-keyscan -H "$BACKEND_HOST" >> ~/.ssh/known_hosts 2>/dev/null
           chmod 600 ~/.ssh/known_hosts
+          printf '%s\n' "$BACKEND_ENV_FILE" > /tmp/lavel_backend.env
+          chmod 600 /tmp/lavel_backend.env
+          scp -i ~/.ssh/lavel_deploy_key /tmp/lavel_backend.env "$BACKEND_USER@$BACKEND_HOST:~/lavel_backend.env"
+          rm -f /tmp/lavel_backend.env
 
       - name: Pull image and replace container
         run: |
@@ -184,11 +190,12 @@ jobs:
             | docker login --username AWS --password-stdin "$ECR_REGISTRY"
           docker pull "$IMAGE_URI"
 
+          chmod 600 "$HOME/lavel_backend.env"
           docker rm -f lavel-backend 2>/dev/null || true
           docker run -d \
             --name lavel-backend \
             --restart unless-stopped \
-            --env-file /opt/lavel/.env \
+            --env-file "$HOME/lavel_backend.env" \
             -p 8000:8000 \
             -v lavel_uploads:/app/uploads \
             "$IMAGE_URI"
