@@ -178,6 +178,10 @@ jobs:
           chmod 600 ~/.ssh/lavel_deploy_key
           ssh-keyscan -H "$BACKEND_HOST" >> ~/.ssh/known_hosts >/dev/null
 
+      - name: Debug known_hosts
+        run: |
+          cat ~/.ssh/known_hosts
+
       - name: Pull image and replace container
         run: |
           ssh -i ~/.ssh/lavel_deploy_key "$BACKEND_USER@$BACKEND_HOST" \
