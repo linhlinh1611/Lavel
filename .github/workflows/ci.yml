@@ -169,6 +169,7 @@ jobs:
             --restart unless-stopped \
             --env-file "$HOME/lavel_backend.env" \
             -p 8000:8000 \
+            -v lavel_database:/app/data \
             -v lavel_uploads:/app/uploads \
             "$IMAGE_URI"
           REMOTE
