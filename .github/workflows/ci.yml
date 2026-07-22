@@ -82,8 +82,6 @@ jobs:
     needs: [frontend-ci, backend-ci]
     runs-on: ubuntu-latest
     environment: production
-    outputs:
-      image: ${{ steps.image.outputs.uri }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -99,17 +97,11 @@ jobs:
         id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Create image URI
-        id: image
-        env:
-          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
-        run: echo "uri=$ECR_REGISTRY/$ECR_REPOSITORY:$GITHUB_SHA" >> "$GITHUB_OUTPUT"
-
       - name: Build and push image
         env:
-          IMAGE_URI: ${{ steps.image.outputs.uri }}
           ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
         run: |
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$GITHUB_SHA"
           LATEST_IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY:latest"
           docker build -f backend/Dockerfile -t "$IMAGE_URI" -t "$LATEST_IMAGE" backend
           docker push "$IMAGE_URI"
@@ -164,7 +156,6 @@ jobs:
     env:
       BACKEND_HOST: ${{ secrets.BACKEND_HOST }}
       BACKEND_USER: ${{ secrets.BACKEND_USER }}
-      IMAGE_URI: ${{ needs.backend-image.outputs.image }}
     steps:
       - name: Configure SSH
         env:
@@ -182,10 +173,13 @@ jobs:
       - name: Pull image and replace container
         run: |
           ssh -i ~/.ssh/lavel_deploy_key "$BACKEND_USER@$BACKEND_HOST" \
-            "AWS_REGION='$AWS_REGION' IMAGE_URI='$IMAGE_URI' bash -s" <<'REMOTE'
+            "AWS_REGION='$AWS_REGION' ECR_REPOSITORY='$ECR_REPOSITORY' IMAGE_TAG='$GITHUB_SHA' bash -s" <<'REMOTE'
           set -euo pipefail
 
-          ECR_REGISTRY="${IMAGE_URI%%/*}"
+          AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          ECR_REGISTRY="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
           aws ecr get-login-password --region "$AWS_REGION" \
             | docker login --username AWS --password-stdin "$ECR_REGISTRY"
           docker pull "$IMAGE_URI"
