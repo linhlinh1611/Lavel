@@ -154,7 +154,7 @@ jobs:
         if: env.CLOUDFRONT_DISTRIBUTION_ID != ''
         run: aws cloudfront create-invalidation --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" --paths "/*"
 
-  # Server dùng IAM Role để đăng nhập ECR, pull đúng tag commit và thay container cũ.
+  # Server dùng IAM Role để đăng nhập ECR, pull đúng tag commit và thay container cũ
   deploy-backend:
     name: Deploy / Backend server
     if: github.event_name != 'pull_request'
