@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_URL || '';
+const BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
 
 async function fetchWithTimeout(url, options = {}, timeout = 15000) {
   const controller = new AbortController();
