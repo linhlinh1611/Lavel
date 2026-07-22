@@ -176,7 +176,7 @@ jobs:
           install -m 700 -d ~/.ssh
           printf '%s\n' "$BACKEND_SSH_KEY" > ~/.ssh/lavel_deploy_key
           chmod 600 ~/.ssh/lavel_deploy_key
-          ssh-keyscan -H "$BACKEND_HOST" >> ~/.ssh/known_hosts
+          ssh-keyscan -H "$BACKEND_HOST" >> ~/.ssh/known_hosts >/dev/null
 
       - name: Pull image and replace container
         run: |
