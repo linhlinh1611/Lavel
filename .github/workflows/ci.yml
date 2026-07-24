@@ -135,7 +135,6 @@ jobs:
     env:
       BACKEND_HOST: ${{ secrets.BACKEND_HOST }}
       BACKEND_USER: ${{ secrets.BACKEND_USER }}
-      EC2_SECURITY_GROUP_ID: ${{ secrets.EC2_SECURITY_GROUP_ID }}
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -148,7 +147,6 @@ jobs:
         id: open-ssh
         run: |
           set -euo pipefail
-          : "${EC2_SECURITY_GROUP_ID:?Missing GitHub secret EC2_SECURITY_GROUP_ID}"
           : "${BACKEND_HOST:?Missing GitHub secret BACKEND_HOST}"
 
           INSTANCE_ID="$(aws ec2 describe-instances \
@@ -164,8 +162,9 @@ jobs:
             --instance-ids "$INSTANCE_ID" \
             --query 'Reservations[0].Instances[0].SecurityGroups[].GroupId' \
             --output text)"
-          if [[ " $ATTACHED_GROUPS " != *" $EC2_SECURITY_GROUP_ID "* ]]; then
-            echo "::error::EC2_SECURITY_GROUP_ID is not attached to the EC2 instance identified by BACKEND_HOST."
+          EC2_SECURITY_GROUP_ID="$(awk '{print $1}' <<< "$ATTACHED_GROUPS")"
+          if [[ -z "$EC2_SECURITY_GROUP_ID" || "$EC2_SECURITY_GROUP_ID" == "None" ]]; then
+            echo "::error::No Security Group is attached to the EC2 instance."
             exit 1
           fi
 
@@ -179,6 +178,7 @@ jobs:
             --query 'SecurityGroupRules[0].SecurityGroupRuleId' \
             --output text)"
           echo "rule-id=$RULE_ID" >> "$GITHUB_OUTPUT"
+          echo "security-group-id=$EC2_SECURITY_GROUP_ID" >> "$GITHUB_OUTPUT"
 
       - name: Configure SSH and environment
         env:
@@ -248,6 +248,7 @@ jobs:
       - name: Remove runner SSH access
         if: always() && steps.open-ssh.outputs.rule-id != ''
         env:
+          EC2_SECURITY_GROUP_ID: ${{ steps.open-ssh.outputs.security-group-id }}
           SECURITY_GROUP_RULE_ID: ${{ steps.open-ssh.outputs.rule-id }}
         run: |
           aws ec2 revoke-security-group-ingress \
