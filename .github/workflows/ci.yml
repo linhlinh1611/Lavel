@@ -197,9 +197,19 @@ jobs:
           fi
 
           install -m 700 -d ~/.ssh
-          printf '%s\n' "$BACKEND_SSH_KEY" | tr -d '\r' > ~/.ssh/lavel_deploy_key
+          if [[ "$BACKEND_SSH_KEY" == *"BEGIN"*"PRIVATE KEY"* ]]; then
+            printf '%b\n' "$BACKEND_SSH_KEY" | tr -d '\r' > ~/.ssh/lavel_deploy_key
+          else
+            if ! printf '%s' "$BACKEND_SSH_KEY" | base64 --decode > ~/.ssh/lavel_deploy_key 2>/dev/null; then
+              echo "::error::BACKEND_SSH_KEY is neither a valid PEM private key nor valid Base64."
+              exit 1
+            fi
+          fi
           chmod 600 ~/.ssh/lavel_deploy_key
-          ssh-keygen -y -f ~/.ssh/lavel_deploy_key >/dev/null
+          if ! ssh-keygen -y -f ~/.ssh/lavel_deploy_key >/dev/null 2>&1; then
+            echo "::error::BACKEND_SSH_KEY could not be parsed. Store the Base64 content of the EC2 .pem file in this secret."
+            exit 1
+          fi
 
           for attempt in {1..6}; do
             if ssh-keyscan -T 10 -H "$BACKEND_HOST" > ~/.ssh/known_hosts; then
