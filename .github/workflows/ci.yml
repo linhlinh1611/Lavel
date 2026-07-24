@@ -149,6 +149,26 @@ jobs:
         run: |
           set -euo pipefail
           : "${EC2_SECURITY_GROUP_ID:?Missing GitHub secret EC2_SECURITY_GROUP_ID}"
+          : "${BACKEND_HOST:?Missing GitHub secret BACKEND_HOST}"
+
+          INSTANCE_ID="$(aws ec2 describe-instances \
+            --filters "Name=ip-address,Values=$BACKEND_HOST" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[0].Instances[0].InstanceId' \
+            --output text)"
+          if [[ -z "$INSTANCE_ID" || "$INSTANCE_ID" == "None" ]]; then
+            echo "::error::BACKEND_HOST is not the public IPv4 address of a running EC2 instance in AWS_REGION."
+            exit 1
+          fi
+
+          ATTACHED_GROUPS="$(aws ec2 describe-instances \
+            --instance-ids "$INSTANCE_ID" \
+            --query 'Reservations[0].Instances[0].SecurityGroups[].GroupId' \
+            --output text)"
+          if [[ " $ATTACHED_GROUPS " != *" $EC2_SECURITY_GROUP_ID "* ]]; then
+            echo "::error::EC2_SECURITY_GROUP_ID is not attached to the EC2 instance identified by BACKEND_HOST."
+            exit 1
+          fi
+
           RUNNER_IP="$(curl --proto '=https' --tlsv1.2 --fail --silent https://checkip.amazonaws.com | tr -d '[:space:]')"
           [[ "$RUNNER_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
           RULE_ID="$(aws ec2 authorize-security-group-ingress \
