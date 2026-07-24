@@ -135,7 +135,31 @@ jobs:
     env:
       BACKEND_HOST: ${{ secrets.BACKEND_HOST }}
       BACKEND_USER: ${{ secrets.BACKEND_USER }}
+      EC2_SECURITY_GROUP_ID: ${{ secrets.EC2_SECURITY_GROUP_ID }}
     steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Allow runner SSH access
+        id: open-ssh
+        run: |
+          set -euo pipefail
+          : "${EC2_SECURITY_GROUP_ID:?Missing GitHub secret EC2_SECURITY_GROUP_ID}"
+          RUNNER_IP="$(curl --proto '=https' --tlsv1.2 --fail --silent https://checkip.amazonaws.com | tr -d '[:space:]')"
+          [[ "$RUNNER_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          RULE_ID="$(aws ec2 authorize-security-group-ingress \
+            --group-id "$EC2_SECURITY_GROUP_ID" \
+            --protocol tcp \
+            --port 22 \
+            --cidr "$RUNNER_IP/32" \
+            --query 'SecurityGroupRules[0].SecurityGroupRuleId' \
+            --output text)"
+          echo "rule-id=$RULE_ID" >> "$GITHUB_OUTPUT"
+
       - name: Configure SSH and environment
         env:
           BACKEND_ENV_FILE: ${{ secrets.BACKEND_ENV_FILE }}
@@ -157,7 +181,13 @@ jobs:
           chmod 600 ~/.ssh/lavel_deploy_key
           ssh-keygen -y -f ~/.ssh/lavel_deploy_key >/dev/null
 
-          if ! ssh-keyscan -T 10 -H "$BACKEND_HOST" > ~/.ssh/known_hosts; then
+          for attempt in {1..6}; do
+            if ssh-keyscan -T 10 -H "$BACKEND_HOST" > ~/.ssh/known_hosts; then
+              break
+            fi
+            sleep 5
+          done
+          if [[ ! -s ~/.ssh/known_hosts ]]; then
             echo "::error::Cannot reach $BACKEND_HOST on SSH port 22. Check the EC2 Security Group and BACKEND_HOST."
             exit 1
           fi
@@ -194,3 +224,12 @@ jobs:
             -v lavel_uploads:/app/uploads \
             "$IMAGE_URI"
           REMOTE
+
+      - name: Remove runner SSH access
+        if: always() && steps.open-ssh.outputs.rule-id != ''
+        env:
+          SECURITY_GROUP_RULE_ID: ${{ steps.open-ssh.outputs.rule-id }}
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id "$EC2_SECURITY_GROUP_ID" \
+            --security-group-rule-ids "$SECURITY_GROUP_RULE_ID"
