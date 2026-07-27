@@ -6,6 +6,10 @@ on:
       - 'frontend-v*' 
   workflow_dispatch:
 
+permissions:
+  contents: read
+  actions: read
+
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
 
@@ -17,23 +21,51 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract Version Tag
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF_NAME#frontend-}" >> $GITHUB_OUTPUT
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22.x
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install & Build
-        working-directory: frontend
+      - name: Find successful CI run
+        id: ci-run
         env:
-          VITE_APP_VERSION: ${{ steps.get_version.outputs.VERSION }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          npm ci
-          npm run build
+          set -euo pipefail
+
+          for attempt in {1..40}; do
+            RUNS="$(gh api \
+              --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+              -f head_sha="$GITHUB_SHA" \
+              -f event=push \
+              -f per_page=20)"
+
+            RUN_ID="$(jq -r '.workflow_runs[] | select(.conclusion == "success") | .id' <<< "$RUNS" | head -n 1)"
+            if [[ -n "$RUN_ID" ]]; then
+              echo "run-id=$RUN_ID" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            FAILED="$(jq -r '.workflow_runs[] | select(.status == "completed" and .conclusion != "success") | .conclusion' <<< "$RUNS" | head -n 1)"
+            if [[ -n "$FAILED" ]]; then
+              echo "::error::CI for commit $GITHUB_SHA completed with result: $FAILED"
+              exit 1
+            fi
+
+            echo "Waiting for CI artifact for commit $GITHUB_SHA ($attempt/40)..."
+            sleep 15
+          done
+
+          echo "::error::No successful push CI run found for commit $GITHUB_SHA."
+          exit 1
+
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.ci-run.outputs.run-id }}
+
+      - name: Verify frontend artifact
+        run: test -f frontend/dist/index.html
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4

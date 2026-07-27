@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
@@ -45,7 +46,7 @@ jobs:
         with:
           name: frontend-dist
           path: frontend/dist
-          retention-days: 1
+          retention-days: 7
 
   backend-ci:
     name: CI / Backend
@@ -72,5 +73,3 @@ jobs:
       - name: Run Pytest
         working-directory: backend
         run: python -m pytest -q
-
- 
