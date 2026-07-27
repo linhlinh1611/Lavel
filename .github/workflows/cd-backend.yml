@@ -15,8 +15,6 @@ jobs:
     name: CD / Build & Push Backend Image
     runs-on: ubuntu-latest
     environment: production
-    outputs:
-      image-uri: ${{ steps.image.outputs.uri }}
     steps:
       - uses: actions/checkout@v4
 
@@ -63,7 +61,6 @@ jobs:
     env:
       BACKEND_HOST: ${{ secrets.BACKEND_HOST }}
       BACKEND_USER: ${{ secrets.BACKEND_USER }}
-      IMAGE_URI: ${{ needs.backend-image.outputs.image-uri }}
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -162,9 +159,22 @@ jobs:
 
       - name: Pull image and run container
         run: |
+          set -euo pipefail
+          AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          ECR_REGISTRY="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+          VERSION_TAG="${GITHUB_REF_NAME#backend-}"
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$VERSION_TAG"
+
+          if [[ ! "$IMAGE_URI" =~ ^[0-9]{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com/.+:.+$ ]]; then
+            echo "::error::Invalid ECR image URI. Check AWS_REGION and ECR_REPOSITORY."
+            exit 1
+          fi
+
           ssh -i ~/.ssh/lavel_deploy_key "$BACKEND_USER@$BACKEND_HOST" \
             "AWS_REGION='$AWS_REGION' IMAGE_URI='$IMAGE_URI' bash -s" <<'REMOTE'
-          set -e
+          set -euo pipefail
+          : "${AWS_REGION:?Missing AWS_REGION}"
+          : "${IMAGE_URI:?Missing IMAGE_URI}"
           ECR_REGISTRY="${IMAGE_URI%%/*}"
 
           aws ecr get-login-password --region "$AWS_REGION" \
