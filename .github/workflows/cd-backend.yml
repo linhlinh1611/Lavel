@@ -15,6 +15,8 @@ jobs:
     name: CD / Build & Push Backend Image
     runs-on: ubuntu-latest
     environment: production
+    outputs:
+      image-uri: ${{ steps.image.outputs.uri }}
     steps:
       - uses: actions/checkout@v4
 
@@ -33,18 +35,24 @@ jobs:
         id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and push image with Version Tag
+      - name: Set image URI
+        id: image
         env:
           ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
           VERSION_TAG: ${{ steps.get_version.outputs.VERSION }}
+        run: echo "uri=$ECR_REGISTRY/$ECR_REPOSITORY:$VERSION_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image with Version Tag
+        env:
+          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
         run: |
-          # Gán 2 tag: một tag chính xác phiên bản (v1.0.0) và một tag latest
           docker build -f backend/Dockerfile \
-            -t "$ECR_REGISTRY/$ECR_REPOSITORY:$VERSION_TAG" \
+            -t "$IMAGE_URI" \
             -t "$ECR_REGISTRY/$ECR_REPOSITORY:latest" \
             backend
 
-          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$VERSION_TAG"
+          docker push "$IMAGE_URI"
           docker push "$ECR_REGISTRY/$ECR_REPOSITORY:latest"
 
   deploy-backend:
@@ -55,6 +63,7 @@ jobs:
     env:
       BACKEND_HOST: ${{ secrets.BACKEND_HOST }}
       BACKEND_USER: ${{ secrets.BACKEND_USER }}
+      IMAGE_URI: ${{ needs.backend-image.outputs.image-uri }}
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -154,11 +163,9 @@ jobs:
       - name: Pull image and run container
         run: |
           ssh -i ~/.ssh/lavel_deploy_key "$BACKEND_USER@$BACKEND_HOST" \
-            "AWS_REGION='$AWS_REGION' ECR_REPOSITORY='$ECR_REPOSITORY' IMAGE_TAG='$GITHUB_SHA' bash -s" <<'REMOTE'
+            "AWS_REGION='$AWS_REGION' IMAGE_URI='$IMAGE_URI' bash -s" <<'REMOTE'
           set -e
-          AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
-          ECR_REGISTRY="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
-          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          ECR_REGISTRY="${IMAGE_URI%%/*}"
 
           aws ecr get-login-password --region "$AWS_REGION" \
             | docker login --username AWS --password-stdin "$ECR_REGISTRY"
