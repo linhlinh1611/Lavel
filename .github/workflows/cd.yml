@@ -22,10 +22,11 @@ jobs:
     environment: production
     steps:
       - name: Download frontend build
-        uses: actions/download-artifact@v4
+        uses: dawidd6/action-download-artifact@v6
         with:
           name: frontend-dist
           path: frontend-dist
+          run_id: ${{ github.event.workflow_run.id }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
