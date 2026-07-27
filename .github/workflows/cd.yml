@@ -18,7 +18,6 @@ jobs:
   deploy-frontend:
     name: CD / Frontend to S3
     if: github.event_name == 'push'
-    needs: [frontend-ci, backend-ci]
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -43,7 +42,6 @@ jobs:
   backend-image:
     name: CD / Build backend image
     if: github.event_name == 'push'
-    needs: [frontend-ci, backend-ci]
     runs-on: ubuntu-latest
     environment: production
     steps:
