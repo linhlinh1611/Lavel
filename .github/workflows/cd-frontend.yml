@@ -1,0 +1,48 @@
+name: CD Frontend
+
+on:
+  push:
+    tags:
+      - 'frontend-v*' 
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+
+jobs:
+  deploy-frontend:
+    name: CD / Deploy Frontend to S3
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract Version Tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF_NAME#frontend-}" >> $GITHUB_OUTPUT
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install & Build
+        working-directory: frontend
+        env:
+          VITE_APP_VERSION: ${{ steps.get_version.outputs.VERSION }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload to S3
+        env:
+          FRONTEND_S3_BUCKET: ${{ secrets.FRONTEND_S3_BUCKET }}
+        run: aws s3 sync frontend/dist "s3://$FRONTEND_S3_BUCKET" --delete
