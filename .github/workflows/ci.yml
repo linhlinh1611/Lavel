@@ -73,3 +73,40 @@ jobs:
       - name: Run Pytest
         working-directory: backend
         run: python -m pytest -q
+
+  backend-image:
+    name: CI / Build Backend Image
+    needs: [frontend-ci, backend-ci]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -f backend/Dockerfile -t "lavel-backend:$GITHUB_SHA" backend
+
+      - name: Configure AWS credentials
+        if: github.event_name != 'pull_request'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        if: github.event_name != 'pull_request'
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Push backend image to ECR
+        if: github.event_name != 'pull_request'
+        env:
+          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          set -euo pipefail
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$GITHUB_SHA"
+          LATEST_URI="$ECR_REGISTRY/$ECR_REPOSITORY:latest"
+
+          docker tag "lavel-backend:$GITHUB_SHA" "$IMAGE_URI"
+          docker tag "lavel-backend:$GITHUB_SHA" "$LATEST_URI"
+          docker push "$IMAGE_URI"
+          docker push "$LATEST_URI"

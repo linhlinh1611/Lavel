@@ -11,51 +11,8 @@ env:
   ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
 
 jobs:
-  backend-image:
-    name: CD / Build & Push Backend Image
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Extract Version Tag
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF_NAME#backend-}" >> $GITHUB_OUTPUT
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Set image URI
-        id: image
-        env:
-          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
-          VERSION_TAG: ${{ steps.get_version.outputs.VERSION }}
-        run: echo "uri=$ECR_REGISTRY/$ECR_REPOSITORY:$VERSION_TAG" >> "$GITHUB_OUTPUT"
-
-      - name: Build and push image with Version Tag
-        env:
-          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
-          IMAGE_URI: ${{ steps.image.outputs.uri }}
-        run: |
-          docker build -f backend/Dockerfile \
-            -t "$IMAGE_URI" \
-            -t "$ECR_REGISTRY/$ECR_REPOSITORY:latest" \
-            backend
-
-          docker push "$IMAGE_URI"
-          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:latest"
-
   deploy-backend:
     name: CD / Deploy to EC2
-    needs: backend-image
     runs-on: ubuntu-latest
     environment: production
     env:
@@ -68,6 +25,29 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve image built by CI
+        run: |
+          set -euo pipefail
+          AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          ECR_REGISTRY="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$GITHUB_SHA"
+
+          for attempt in {1..40}; do
+            if aws ecr describe-images \
+              --repository-name "$ECR_REPOSITORY" \
+              --image-ids "imageTag=$GITHUB_SHA" \
+              --region "$AWS_REGION" >/dev/null 2>&1; then
+              echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
+              exit 0
+            fi
+
+            echo "Waiting for CI image $GITHUB_SHA ($attempt/40)..."
+            sleep 15
+          done
+
+          echo "::error::CI image $IMAGE_URI was not found in ECR."
+          exit 1
 
       - name: Allow runner SSH access
         id: open-ssh
@@ -160,15 +140,7 @@ jobs:
       - name: Pull image and run container
         run: |
           set -euo pipefail
-          AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
-          ECR_REGISTRY="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
-          VERSION_TAG="${GITHUB_REF_NAME#backend-}"
-          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$VERSION_TAG"
-
-          if [[ ! "$IMAGE_URI" =~ ^[0-9]{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com/.+:.+$ ]]; then
-            echo "::error::Invalid ECR image URI. Check AWS_REGION and ECR_REPOSITORY."
-            exit 1
-          fi
+          : "${IMAGE_URI:?CI image was not resolved}"
 
           ssh -i ~/.ssh/lavel_deploy_key "$BACKEND_USER@$BACKEND_HOST" \
             "AWS_REGION='$AWS_REGION' IMAGE_URI='$IMAGE_URI' bash -s" <<'REMOTE'
